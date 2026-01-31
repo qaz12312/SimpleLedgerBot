@@ -19,6 +19,10 @@ const CONFIG = {
  * @return {TextOutput} HTTP response
  */
 function doPost(e) {
+	const signature = e.headers['x-line-signature'];
+	if (!verifySignature(e.postData.contents, signature)) {
+		return ContentService.createTextOutput('Invalid Signature');
+	}
 	try {
 		const response = ContentService.createTextOutput('OK');
 
@@ -51,10 +55,6 @@ function processCachedEvents() {
 		const event = JSON.parse(eventData);
 		const body = JSON.parse(event.postData.contents);
 		// writeLog(LEVEL.DEBUG, 'main.gs:processCachedEvents', 'Get body Data', body);
-		// if (!verifySignature(event)) {
-		// 	writeLog(LEVEL.ERROR, 'main.gs:processCachedEvents', 'Verify Signature', 'Invalid signature');
-		// 	return;
-		// }
 
 		handleEventsAsync(body);
 
