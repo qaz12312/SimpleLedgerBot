@@ -201,7 +201,7 @@ function handleRecordCommand(userMsg, sheet, now) {
 	sheet.appendRow([timestamp, parsed.amount, parsed.desc, parsed.category]);
 
 	const categoryText = parsed.category ? ` Category：${parsed.category}` : '';
-	return `V, accounting successful!\n💰 Amount: ${parsed.amount}\n📝 Description: ${parsed.desc}${categoryText}\n⏰ Time: ${timestamp}`;
+	return `V, accounting successful!\n💰 Amount: ${formatMoney(parsed.amount)}\n📝 Description: ${parsed.desc}${categoryText}\n⏰ Time: ${timestamp}`;
 }
 
 /**
@@ -383,9 +383,9 @@ function buildDailySummary(records, label) {
 		const numAmount = parseFloat(amount) || 0;
 		total += numAmount;
 		const categoryText = category ? ` (@${category})` : '';
-		return `・${description || 'no description'}：${numAmount}${categoryText}`;
+		return `・${description || 'no description'}：${formatMoney(numAmount)}${categoryText}`;
 	}).join('\n');
-	return `${label} Total Expenses: ${total}\nDetails:\n${details || 'No records found'}`;
+	return `${label} Total Expenses: ${formatMoney(total)}\nDetails:\n${details || 'No records found'}`;
 }
 
 /**
@@ -411,10 +411,10 @@ function buildStatsReply(rows, label) {
 	});
 
 	const summary = Array.from(categoryMap.entries())
-		.map(([cat, amt]) => `・${cat}：${amt}`)
+		.map(([cat, amt]) => `・${cat}：${formatMoney(amt)}`)
 		.join('\n');
 
-	return `${label} Total Expenses: ${total}\nCategory Summary:\n${summary || 'No records found'}`;
+	return `${label} Total Expenses: ${formatMoney(total)}\nCategory Summary:\n${summary || 'No records found'}`;
 }
 
 /**
@@ -548,6 +548,15 @@ function formatTimestamp(date) {
  */
 function formatDate(date, format) {
 	return Utilities.formatDate(date, CONFIG.TIMEZONE, format);
+}
+
+/**
+ * Format amount with thousand separator
+ * @param {number} amount
+ * @return {string}
+ */
+function formatMoney(amount) {
+	return amount.toLocaleString('en-US');
 }
 
 /**
