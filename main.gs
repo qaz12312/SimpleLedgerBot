@@ -1,7 +1,9 @@
 const CONFIG = {
 	PROGRAM_NAME: 'Current_File',
 	SHEET_ID: 'YOUR_SHEET_ID_HERE',
-	SHEET_NAME: 'Accounting',
+	RECORD_SHEET_NAME: 'Accounting',
+	USAGE_SHEET_NAME: 'Usage',
+	FIELD_GET_CURRENT_USAGE_COUNT: 'A1',
 	PUSH_URL: 'https://api.line.me/v2/bot/message/push',
 	CHANNEL_ACCESS_TOKEN: 'YOUR_CHANNEL_ACCESS_TOKEN_HERE',
 	CHANNEL_SECRET: 'YOUR_CHANNEL_SECRET_HERE',
@@ -156,7 +158,7 @@ function getUserActionDescription(event) {
  */
 function handleTextMessage(event, userId) {
 	const userMsg = event.message.text.trim();
-	const sheet = getSheet(CONFIG.SHEET_NAME);
+	const sheet = getSheet(CONFIG.RECORD_SHEET_NAME);
 	if (!sheet) {
 		replyText(userId, 'X, cannot access accounting sheet');
 		return;
@@ -429,7 +431,7 @@ function replyText(userId, message) {
  * @param {string} purpose - Purpose of the message sent
  */
 function recordSendTimes(purpose) {
-	const sheet = getSheet('Usage');
+	const sheet = getSheet(CONFIG.USAGE_SHEET_NAME);
 	if (!sheet) { return; }
 
 	const timestamp = formatTimestamp(new Date());
@@ -442,12 +444,30 @@ function recordSendTimes(purpose) {
  */
 function getSendUsage() {
 	try {
-		const sheet = getSheet('Usage');
+		const sheet = getSheet(CONFIG.USAGE_SHEET_NAME);
 		if (!sheet) {
 			return 'X, Unable to retrieve information usage records.';
 		}
-
-		const currentCount = getCurrentMonthMessageCount(sheet) + 1; // +1 for current message
+		
+		const rawValue = sheet.getRange(CONFIG.FIELD_GET_CURRENT_USAGE_COUNT).getValue();
+		let currentMonthCount;
+		// Validate that the value is a valid number
+		if (typeof rawValue === 'number' && !isNaN(rawValue) && rawValue >= 0) {
+			currentMonthCount = rawValue;
+		} else if (typeof rawValue === 'string') {
+			// Check if string contains only digits (and optional decimal point)
+			const trimmed = rawValue.trim();
+			if (/^\d+(\.\d+)?$/.test(trimmed)) {
+				currentMonthCount = parseFloat(trimmed);
+			} else {
+				writeLog(LEVEL.ERROR, `${CONFIG.PROGRAM_NAME}:getSendUsage`, 'Parse Usage Count', `Invalid format in cell ${CONFIG.FIELD_GET_CURRENT_USAGE_COUNT}: "${rawValue}"`);
+				currentMonthCount = getCurrentMonthMessageCount(sheet);
+			}
+		} else {
+			writeLog(LEVEL.ERROR, `${CONFIG.PROGRAM_NAME}:getSendUsage`, 'Parse Usage Count', `Invalid type in cell ${CONFIG.FIELD_GET_CURRENT_USAGE_COUNT}: ${typeof rawValue}`);
+			currentMonthCount = getCurrentMonthMessageCount(sheet);
+		}
+		const currentCount = currentMonthCount + 1; // +1 for current message
 		return `📤 This month has sent ${currentCount} / ${CONFIG.MONTHLY_MESSAGE_LIMIT} messages`;
 	} catch (error) {
 		writeLog(LEVEL.EMERGENCY, `${CONFIG.PROGRAM_NAME}:getSendUsage`, 'Calculate Usage', error);
