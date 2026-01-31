@@ -19,21 +19,33 @@ const CONFIG = {
  * @return {TextOutput} HTTP response
  */
 function doPost(e) {
-	const signature = e.headers['x-line-signature'];
-	if (!verifySignature(e.postData.contents, signature)) {
-		return ContentService.createTextOutput('Invalid Signature');
-	}
 	try {
-		const response = ContentService.createTextOutput('OK');
+		// Validate request structure
+		if (!e.postData || !e.postData.contents) {
+			writeLog(LEVEL.ERROR, `${CONFIG.PROGRAM_NAME}:doPost`, 'Validate Request', 'Missing postData or contents');
+			return ContentService.createTextOutput('Invalid Request');
+		}
+
+		// Verify LINE signature
+		const signature = e.headers['x-line-signature'];
+		if (!verifySignature(e.postData.contents, signature)) {
+			writeLog(LEVEL.WARN, `${CONFIG.PROGRAM_NAME}:doPost`, 'Verify Signature', 'Signature verification failed');
+			return ContentService.createTextOutput('Invalid Signature');
+		}
 
 		// Save the event data to PropertiesService for later processing
+		const eventId = Utilities.getUuid();
 		const eventData = JSON.stringify(e);
-		// writeLog(LEVEL.DEBUG, `${CONFIG.PROGRAM_NAME}:doPost`, 'Get Json Format Event', eventData);
-		PropertiesService.getScriptProperties().setProperty('EVENT', eventData);
+		PropertiesService.getScriptProperties().setProperty(`EVENT_${eventId}`, eventData);
 
-		ScriptApp.newTrigger('processCachedEvents').timeBased().after(CONFIG.TRIGGER_DELAY).create();
+		// Create trigger only if none exists for processCachedEvents
+		const existingTriggers = ScriptApp.getProjectTriggers()
+			.filter(trigger => trigger.getHandlerFunction() === 'processCachedEvents');
+		if (existingTriggers.length === 0) {
+			ScriptApp.newTrigger('processCachedEvents').timeBased().after(CONFIG.TRIGGER_DELAY).create();
+		}
 
-		return response;
+		return ContentService.createTextOutput('OK');
 	} catch (error) {
 		writeLog(LEVEL.EMERGENCY, `${CONFIG.PROGRAM_NAME}:doPost`, 'Respond', error);
 		return ContentService.createTextOutput('Error');
@@ -46,22 +58,33 @@ function doPost(e) {
 function processCachedEvents() {
 	try {
 		const scriptProperties = PropertiesService.getScriptProperties();
-		const eventData = scriptProperties.getProperty('EVENT');
-		if (!eventData) {
-			writeLog(LEVEL.ERROR, `${CONFIG.PROGRAM_NAME}:processCachedEvents`, 'Get Data From Properties', 'No "EVENT" found in script properties');
+		const allProperties = scriptProperties.getProperties();
+		const eventProperties = Object.keys(allProperties).filter(key => key.startsWith('EVENT_'));
+		
+		if (eventProperties.length === 0) {
+			writeLog(LEVEL.ERROR, `${CONFIG.PROGRAM_NAME}:processCachedEvents`, 'Get Data From Properties', 'No cached events found in script properties');
 			return;
 		}
 
-		const event = JSON.parse(eventData);
-		const body = JSON.parse(event.postData.contents);
-		// writeLog(LEVEL.DEBUG, 'main.gs:processCachedEvents', 'Get body Data', body);
+		// Process all cached events
+		for (const eventKey of eventProperties) {
+			try {
+				const eventData = allProperties[eventKey];
+				const event = JSON.parse(eventData);
+				const body = JSON.parse(event.postData.contents);
+				// writeLog(LEVEL.DEBUG, 'main.gs:processCachedEvents', 'Get body Data', body);
 
-		handleEventsAsync(body);
+				handleEventsAsync(body);
+				scriptProperties.deleteProperty(eventKey);
+			} catch (error) {
+				writeLog(LEVEL.ERROR, `${CONFIG.PROGRAM_NAME}:processCachedEvents`, `Process Event ${eventKey}`, error);
+				scriptProperties.deleteProperty(eventKey);
+			}
+		}
 
 	} catch (error) {
 		writeLog(LEVEL.ERROR, `${CONFIG.PROGRAM_NAME}:processCachedEvents`, 'Process Events', error);
 	} finally {
-		scriptProperties.deleteProperty('EVENT');
 		cleanupTriggers('processCachedEvents');
 	}
 }
@@ -142,9 +165,11 @@ function handleTextMessage(event, userId) {
 	try {
 		const now = new Date();
 		const recordResult = handleRecordCommand(userMsg, sheet, now);
-		if (recordResult) return recordResult;
-		const queryResult = handleQueryCommands(userMsg, sheet, now);
-		const reply = queryResult || getHelpText();
+		let queryResult = null;
+		if (!recordResult) {
+			queryResult = handleQueryCommands(userMsg, sheet, now);
+		}
+		const reply = recordResult || queryResult || getHelpText();
 		replyText(userId, reply);
 	} catch (error) {
 		writeLog(LEVEL.EMERGENCY, `${CONFIG.PROGRAM_NAME}:handleTextMessage`, 'Process User Message', error);
