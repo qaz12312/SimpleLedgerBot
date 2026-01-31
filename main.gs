@@ -1,4 +1,5 @@
 const CONFIG = {
+	PROGRAM_NAME: 'Current_File',
 	SHEET_ID: 'YOUR_SHEET_ID_HERE',
 	SHEET_NAME: 'Accounting',
 	PUSH_URL: 'https://api.line.me/v2/bot/message/push',
@@ -23,14 +24,14 @@ function doPost(e) {
 
 		// Save the event data to PropertiesService for later processing
 		const eventData = JSON.stringify(e);
-		// writeLog(LEVEL.DEBUG, 'main.gs:doPost', 'Get Json Format Event', eventData);
+		// writeLog(LEVEL.DEBUG, `${CONFIG.PROGRAM_NAME}:doPost`, 'Get Json Format Event', eventData);
 		PropertiesService.getScriptProperties().setProperty('EVENT', eventData);
 
 		ScriptApp.newTrigger('processCachedEvents').timeBased().after(CONFIG.TRIGGER_DELAY).create();
 
 		return response;
 	} catch (error) {
-		writeLog(LEVEL.EMERGENCY, 'main.gs:doPost', 'Respond', error);
+		writeLog(LEVEL.EMERGENCY, `${CONFIG.PROGRAM_NAME}:doPost`, 'Respond', error);
 		return ContentService.createTextOutput('Error');
 	}
 }
@@ -43,7 +44,7 @@ function processCachedEvents() {
 		const scriptProperties = PropertiesService.getScriptProperties();
 		const eventData = scriptProperties.getProperty('EVENT');
 		if (!eventData) {
-			writeLog(LEVEL.ERROR, 'main.gs:processCachedEvents', 'Get Data From Properties', 'No "EVENT" found in script properties');
+			writeLog(LEVEL.ERROR, `${CONFIG.PROGRAM_NAME}:processCachedEvents`, 'Get Data From Properties', 'No "EVENT" found in script properties');
 			return;
 		}
 
@@ -58,7 +59,7 @@ function processCachedEvents() {
 		handleEventsAsync(body);
 
 	} catch (error) {
-		writeLog(LEVEL.ERROR, 'main.gs:processCachedEvents', 'Process Events', error);
+		writeLog(LEVEL.ERROR, `${CONFIG.PROGRAM_NAME}:processCachedEvents`, 'Process Events', error);
 	} finally {
 		scriptProperties.deleteProperty('EVENT');
 		cleanupTriggers('processCachedEvents');
@@ -72,7 +73,7 @@ function handleEventsAsync(body) {
 	try {
 		const events = body.events;
 		if (!Array.isArray(events)) {
-			writeLog(LEVEL.ERROR, 'main.gs:handleEventsAsync', 'Validate Events', {
+			writeLog(LEVEL.ERROR, `${CONFIG.PROGRAM_NAME}:handleEventsAsync`, 'Validate Events', {
 				message: 'Events is not an array',
 				events: events || 'undefined'
 			});
@@ -90,7 +91,7 @@ function handleEventsAsync(body) {
 				const timestamp = formatTimestamp(new Date());
 				const userAction = getUserActionDescription(event);
 				illegalAccessSheet.appendRow([timestamp, userId, userAction]);
-				writeLog(LEVEL.INFO, 'main.gs:handleEventsAsync', 'Log Illegal Access', { userId: userId, requestType: userSend });
+				writeLog(LEVEL.INFO, `${CONFIG.PROGRAM_NAME}:handleEventsAsync`, 'Log Illegal Access', { userId: userId, requestType: userSend });
 				continue;
 			}
 
@@ -98,11 +99,16 @@ function handleEventsAsync(body) {
 				handleTextMessage(event, userId);
 			}
 		}
-
 	} catch (error) {
-		writeLog(LEVEL.EMERGENCY, 'main.gs:handleEventsAsync', 'Handle Events', error);
-
+		writeLog(LEVEL.EMERGENCY, `${CONFIG.PROGRAM_NAME}:handleEventsAsync`, 'Handle Events', error);
 	}
+}
+
+function verifySignature(body, signature) {
+	const hash = Utilities.computeHmacSha256Signature(body, CONFIG.CHANNEL_SECRET);
+	const expected = Utilities.base64Encode(hash);
+	return expected === signature;
+	// return signature === `sha256=${expected}`;
 }
 
 /**
@@ -141,7 +147,7 @@ function handleTextMessage(event, userId) {
 		const reply = queryResult || getHelpText();
 		replyText(userId, reply);
 	} catch (error) {
-		writeLog(LEVEL.EMERGENCY, 'main.gs:handleTextMessage', 'Process User Message', error);
+		writeLog(LEVEL.EMERGENCY, `${CONFIG.PROGRAM_NAME}:handleTextMessage`, 'Process User Message', error);
 		replyText(userId, 'X, cannot process your request at the moment. Please try again later.');
 	}
 }
@@ -204,8 +210,8 @@ function parseRecord(text) {
 	const cleaned = text.replace(/\s+/g, ' ').trim();
 
 	const patterns = [
-		/^(\d+(?:\.\d+)?)\s+(.+)\s+@(.+)$/,
-		/^(\d+(?:\.\d+)?)\s+(.+)$/
+		/^(\d+(?:\.\d+)?)\s+(.+)\s+@(.+)$/, // Money Description @Category
+		/^(\d+(?:\.\d+)?)\s+(.+)$/			// Money Description
 	];
 
 	for (const pattern of patterns) {
@@ -327,8 +333,7 @@ function buildDailySummary(records, label) {
 		const categoryText = category ? ` (@${category})` : '';
 		return `・${description || 'no description'}：${numAmount}${categoryText}`;
 	}).join('\n');
-
-	return `[${label}]\nTotal Expenses: ${total}\nDetails:\n${details || 'No records found'}`;
+	return `${label} Total Expenses: ${total}\nDetails:\n${details || 'No records found'}`;
 }
 
 /**
@@ -339,7 +344,7 @@ function buildDailySummary(records, label) {
  */
 function buildStatsReply(rows, label) {
 	if (!rows || rows.length === 0) {
-		return `${label} no accounting records found. Please record your expenses!`;
+		return `${label} no accounting records found.`;
 	}
 
 	let total = 0;
@@ -384,14 +389,13 @@ function replyText(userId, message) {
 				}]
 			})
 		});
-
 		if (response.getResponseCode() !== 200) {
-			writeLog(LEVEL.ERROR, 'main.gs:replyText', 'Send LINE Message', { statusCode: result.getResponseCode(), content: result.getContentText() });
+			writeLog(LEVEL.ERROR, `${CONFIG.PROGRAM_NAME}:replyText`, 'Send LINE Message', { statusCode: result.getResponseCode(), content: result.getContentText() });
 			return;
 		}
-		recordSendTimes('Reply Text Message to specific user');
+		recordSendTimes(`Reply Text Message:${message}`);
 	} catch (error) {
-		writeLog(LEVEL.EMERGENCY, 'main.gs:replyText', 'Send LINE Message', error);
+		writeLog(LEVEL.EMERGENCY, `${CONFIG.PROGRAM_NAME}:replyText`, 'Send LINE Message', error);
 	}
 }
 
@@ -415,14 +419,14 @@ function getSendUsage() {
 	try {
 		const sheet = getSheet('Usage');
 		if (!sheet) {
-			return '';
+			return 'X, Unable to retrieve information usage records.';
 		}
 
 		const currentCount = getCurrentMonthMessageCount(sheet) + 1; // +1 for current message
 		return `📤 This month has sent ${currentCount} / ${CONFIG.MONTHLY_MESSAGE_LIMIT} messages`;
 	} catch (error) {
-		writeLog(LEVEL.EMERGENCY, 'main.gs:getSendUsage', 'Calculate Usage', error);
-		return '';
+		writeLog(LEVEL.EMERGENCY, `${CONFIG.PROGRAM_NAME}:getSendUsage`, 'Calculate Usage', error);
+		return 'X, Unable to retrieve information usage records.';
 	}
 }
 
@@ -454,7 +458,7 @@ function getSheet(sheetName) {
 	try {
 		return SpreadsheetApp.openById(CONFIG.SHEET_ID).getSheetByName(sheetName);
 	} catch (error) {
-		writeLog(LEVEL.EMERGENCY, 'main.gs:getSheet', 'Open Sheet', `Failed to open sheet: ${sheetName}`);
+		writeLog(LEVEL.EMERGENCY, `${CONFIG.PROGRAM_NAME}:getSheet`, 'Open Sheet', `Failed to open sheet: ${sheetName}`);
 		return null;
 	}
 }
