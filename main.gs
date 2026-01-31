@@ -157,7 +157,7 @@ function getUserActionDescription(event) {
  * @param {string} userId
  */
 function handleTextMessage(event, userId) {
-	const userMsg = event.message.text.trim();
+	const userMsg = normalizeText(event.message.text);
 	const sheet = getSheet(CONFIG.RECORD_SHEET_NAME);
 	if (!sheet) {
 		replyText(userId, 'X, cannot access accounting sheet');
@@ -234,7 +234,7 @@ function handleQueryCommands(userMsg, sheet, now) {
  * @return {Object|null} {amount, desc, category} or null if parsing fails
  */
 function parseRecord(text) {
-	const cleaned = text.replace(/\s+/g, ' ').trim();
+	const cleaned = normalizeText(text);
 
 	const patterns = [
 		/^(\d+(?:\.\d+)?)\s+(.+)\s+@(.+)$/, // Money Description @Category
@@ -252,6 +252,23 @@ function parseRecord(text) {
 		}
 	}
 	return null;
+}
+
+/**
+ * Normalize text by converting full-width characters to half-width, replacing multiple spaces with a single space, trimming, and converting to lowercase.
+ * @param {string} str - Input string
+ * @return {string} Normalized string
+ */
+function normalizeText(str) {
+	if (!str) return '';
+	return str
+		.replace(/[！-～]/g, function(s) {
+			// Convert full-width to half-width
+			return String.fromCharCode(s.charCodeAt(0) - 65248);
+		})
+		.replace(/　/g, ' ') // full-width space to half-width
+		.replace(/\s+/g, ' ') // multiple spaces to single space
+		.trim();
 }
 
 /**
