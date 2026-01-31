@@ -87,7 +87,15 @@ function processCachedEvents() {
 	} catch (error) {
 		writeLog(LEVEL.ERROR, `${CONFIG.PROGRAM_NAME}:processCachedEvents`, 'Process Events', error);
 	} finally {
+		// Check if new events were added during processing
+		const remainingEvents = Object.keys(PropertiesService.getScriptProperties().getProperties())
+			.filter(key => key.startsWith('EVENT_'));
+		// Clean up current trigger
 		cleanupTriggers('processCachedEvents');
+		// If new events exist, create a new trigger to process them
+		if (remainingEvents.length > 0) {
+			ScriptApp.newTrigger('processCachedEvents').timeBased().after(CONFIG.TRIGGER_DELAY).create();
+		}
 	}
 }
 
