@@ -23,7 +23,7 @@ const CONFIG = {
 function doPost(e) {
 	try {
 		// Validate request structure
-		if (!e.postData || !e.postData.contents) {
+		if (!e || !e.postData || !e.postData.contents) {
 			writeLog(LEVEL.ERROR, `${CONFIG.PROGRAM_NAME}:doPost`, 'Validate Request', 'Missing postData or contents');
 			return ContentService.createTextOutput('Invalid Request');
 		}
